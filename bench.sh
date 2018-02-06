@@ -25,14 +25,65 @@ function base ()
 
 function save ()
 {
-	echo "$1:$2"
-	if [ ! -n "$3" ] ;then
-		data="$data,\"$1\":\"$2\""
-	else
-		data="$data,\"$1\":$2"
-	fi	
+	#echo "$1:$2"
+	local sp=','
+	if [ "$savespan" = 'O' -o "$savespan" = 'A' ]; then
+		sp=''
+	fi
+	# clear
+	if [ "$1" = 'S' ] ;then
+		data="$data$sp\"$2\""
+	elif [ "$1" = 'SS' ] ;then
+		data="$data$sp$2"
+	elif [ "$1" = 'P' ] ;then
+		data="$data$sp\"$2\":\"$3\""
+	elif [ "$1" = 'PS' ] ;then
+		data="$data$sp\"$2\":$3"
+	# link object
+	elif [ "$1" = 'O' ] ;then
+		data="$data$sp\"$2\":{"
+	elif [ "$1" = 'OE' ] ;then
+		data="$data}"
+
+	# link array
+	elif [ "$1" = 'A' ] ;then
+		data="$data$sp\"$2\":["
+	elif [ "$1" = 'AE' ] ;then
+		data="$data]"
+	fi
+	savespan="$1"
 }
 
+function save2 ()
+{
+	echo "$1:$2"
+	if [ "$1" = 'L' ] ;then
+		localdata=''
+	elif [ "$2" = 'LO' ] ;then
+		data="$data,\"$1\":{$localdata}"
+
+	elif [ "$2" = 'LA' ] ;then
+		data="$data,\"$1\":[$localdata]"
+
+	elif [ "$2" = 'LY' ] ;then
+		if [ "$localdata" = "" ] ;then
+			localdata="$2"
+		else
+			localdata="$localdata,$2"
+		fi
+	elif [ ! -n "$3" ] ;then
+		data="$data,\"$1\":\"$2\""
+	elif [ "$3" = "L" ] ;then
+		if [ "$localdata" = "" ] ;then
+			localdata="\"$1\":\"$2\""
+		else
+			localdata="$localdata,\"$1\":\"$2\""
+		fi
+	else
+		data="$data,\"$1\":$2"
+		localdata=''
+	fi	
+}
 # Integer values
 function int ()
 {
@@ -67,59 +118,73 @@ function dl ()
 
     local dlstr="{\"title\":\"$2\",\"ip\":\"$ipaddress\",\"speed\":\"$speedtest\"}"
 
-    if [ "$tstr" = "" ]; then
-      tstr="$dlstr"
-    else
-      tstr="$tstr,$dlstr"
-    fi
+    save 'SS' "$dlstr"
 }
 
-
+function speed_dl ()
+{
+	save 'O' 'download_speed'
+	speed_v4
+	save 'OE'
+}
 
 function speed_v4 ()
 {
 
-	tstr=''
+	save 'A' 'v4'
 
     dl 'http://cachefly.cachefly.net/100mb.test' 'CacheFly'
     dl 'http://speedtest.tokyo.linode.com/100MB-tokyo.bin' 'Linode, Tokyo, JP'
-    dl 'http://speedtest.singapore.linode.com/100MB-singapore.bin' 'Linode, Singapore, SG'
-    dl 'http://speedtest.london.linode.com/100MB-london.bin' 'Linode, London, UK'
-    dl 'http://speedtest.frankfurt.linode.com/100MB-frankfurt.bin' 'Linode, Frankfurt, DE'
-    dl 'http://speedtest.fremont.linode.com/100MB-fremont.bin' 'Linode, Fremont, CA'
-    dl 'http://speedtest.dal05.softlayer.com/downloads/test100.zip' 'Softlayer, Dallas, TX'
-    dl 'http://speedtest.sea01.softlayer.com/downloads/test100.zip' 'Softlayer, Seattle, WA'
-    dl 'http://speedtest.fra02.softlayer.com/downloads/test100.zip' 'Softlayer, Frankfurt, DE'
-    dl 'http://speedtest.sng01.softlayer.com/downloads/test100.zip' 'Softlayer, Singapore, SG'
-    dl 'http://speedtest.hkg02.softlayer.com/downloads/test100.zip' 'Softlayer, HongKong, CN'
+    # dl 'http://speedtest.singapore.linode.com/100MB-singapore.bin' 'Linode, Singapore, SG'
+    # dl 'http://speedtest.london.linode.com/100MB-london.bin' 'Linode, London, UK'
+    # dl 'http://speedtest.frankfurt.linode.com/100MB-frankfurt.bin' 'Linode, Frankfurt, DE'
+    # dl 'http://speedtest.fremont.linode.com/100MB-fremont.bin' 'Linode, Fremont, CA'
+    # dl 'http://speedtest.dal05.softlayer.com/downloads/test100.zip' 'Softlayer, Dallas, TX'
+    # dl 'http://speedtest.sea01.softlayer.com/downloads/test100.zip' 'Softlayer, Seattle, WA'
+    # dl 'http://speedtest.fra02.softlayer.com/downloads/test100.zip' 'Softlayer, Frankfurt, DE'
+    # dl 'http://speedtest.sng01.softlayer.com/downloads/test100.zip' 'Softlayer, Singapore, SG'
+    # dl 'http://speedtest.hkg02.softlayer.com/downloads/test100.zip' 'Softlayer, HongKong, CN'
 
-    save 'network.speed' "[$tstr]" 'y'
+    save 'AE'
 }
 
 function prepare ()
 {
 	trace "========== 正在准备 请稍后 =========="
 
-	apt-get install python wget curl -y;
+	local os_arch="x64"
+	case $(uname -m) in
+		x86_64)
+			os_arch="x64"
+			;;
+		i*86)
+			os_arch="x86"
+			;;
+		*)
+			os_arch=$(uname -m)
+			;;
+	esac
+
+	apt-get -y -q install python wget curl >/dev/null 2>&1
 
 	root_path="/root/.bench"
-	mkdir -p "$rootPath"
+	mkdir -p "$root_path"
 	# prepare
-	local tool_url="https://raw.githubusercontent.com/reruin/bench/master/tools/besttrace_${os_arch}"
+	local tool_url="https://raw.githubusercontent.com/reruin/bench/master/utils/besttrace_${os_arch}"
 	local speedtest_url="https://raw.githubusercontent.com/sivel/speedtest-cli/master/speedtest.py"
 	local server_url="https://raw.githubusercontent.com/reruin/bench/master/utils/node"
-	if ! wget --no-check-certificate $tool_url -O "$root_path/besttrace"; then
+	if ! wget --no-check-certificate $tool_url -O "$root_path/besttrace" >/dev/null 2>&1; then
         echo "Failed to download trace tools!"
         exit 1
     fi
-    chmod +x besttrace
+    chmod +x $root_path/besttrace
 
-    if ! wget --no-check-certificate $speedtest_url -O "$root_path/speedtest-cli.py"; then
+    if ! wget --no-check-certificate $speedtest_url -O "$root_path/speedtest-cli.py" >/dev/null 2>&1; then
         echo "Failed to download speedtest-cli tools!"
         exit 1
     fi
 
-    if ! wget --no-check-certificate $server_url -O "$root_path/node"; then
+    if ! wget --no-check-certificate $server_url -O "$root_path/node" >/dev/null 2>&1; then
         echo "Failed to download server nodes!"
         exit 1
     fi
@@ -140,26 +205,15 @@ function trin ()
 
     local mtrstr="{\"title\":\"$2\",\"data\":[{$mtrraw}]}"
 
-
-	if [ "$tstr" = "" ]; then
-      tstr="$mtrstr"
-    else
-      tstr="$tstr,$mtrstr"
-    fi
+    save 'SS' "$mtrstr"
 }
 
 # 回程路由
 function trout ()
 {
-	local mtrraw=$(./besttrace -J -q 2 $1 | grep data | sed -e ':a;$!N;s/\n/,/;ta')
+	local mtrraw=$($root_path/besttrace -J -q 2 $1 | grep data | sed -e ':a;$!N;s/\n/,/;ta')
 	
-	local mtrstr="{\"title\":\"$2\",\"ip\":\"$1\",\"data\":[$mtrstr]}"
-
-	if [ "$tstr" = "" ]; then
-      tstr="$mtrstr"
-    else
-      tstr="$tstr,$mtrstr"
-    fi
+	save 'SS' "{\"title\":\"$2\",\"ip\":\"$1\",\"data\":[$mtrraw]}"
 }
 
 
@@ -176,8 +230,10 @@ function pingin ()
 
 	local pingsummary=$(echo "$pingstr" | grep -Po '(?<=parent\.summary_ping\(\{).*?(?=}\)<\/)' | sed -r 's/("[^"]+?"):(\{[^}]*\})/\{"title":\1,"data":\2\}/g')
 	
-	save 'network.ping_in_detail' "[$pingdetail]" 'y'
-	save 'network.ping_in_summary' "[$pingsummary]" 'y'
+	save 'O' 'in'
+	save 'PS' 'detail' "[$pingdetail]"
+	save 'PS' 'summary' "[$pingsummary]"
+	save 'OE'
 }
 
 # 回程延迟
@@ -202,7 +258,7 @@ function pingout ()
 		if [ "$ttl" = "" ]; then
 	      pstr="$pstr,\"ttl\":\"N/A\""
 	    else
-	      pstr="$pstr,\"ttl\":\"$ttl\""
+	      pstr="$pstr,\"ttl\":$ttl"
 	    fi
 
 		if [ "$rtt" = "" ]; then
@@ -219,63 +275,77 @@ function pingout ()
 	      pt="$pt,{$pstr}"
 	    fi
 
-	done < ./.bench/node.txt
+	done < $root_path/node
 	
-	save "network.ping_out_detail" "[$pt]" 'y'
+	save 'O' 'out'
+	save 'PS' 'detail' "[$pt]"
+	save 'OE'
+}
+
+function pingtest ()
+{
+	save 'O' 'ping'
+
+	pingin
+
+    pingout
+
+	save 'OE'
+
 }
 
 function traceroute ()
 {
 	echo "===测试去程路由==="
 
-	tstr=''
+	save 'O' 'mtr'
+
+	save 'A' 'in'
 
 	#101.227.255.45
 	trin "100" "上海电信(天翼云)"
 
 	#113.141.67.254
-	mtrin "145" "陕西西安电信(天翼云)"
+	#trin "145" "陕西西安电信(天翼云)"
 
 	#182.150.2.2
-	mtrin "304" "四川成都电信(天翼云)"
+	#trin "304" "四川成都电信(天翼云)"
 
 	#103.24.228.1
-	mtrin "7" "天津联通"
+	#trin "7" "天津联通"
 
 	#113.207.32.97	
-	mtrin "12" "重庆联通"
+	#trin "12" "重庆联通"
 
 	#101.227.255.45
-	mtrin "356" "上海移动"
+	#trin "356" "上海移动"
 
 	#202.205.6.30
-	mtrin "160" "北京教育网"
+	#trin "160" "北京教育网"
 
-	save 'network.trin' "[$tstr]" 'y'
+	save 'AE'
 
 	echo "===测试回程路由==="
 
-	tstr=''
+	save 'A' 'out' 
 
-    trout "101.227.255.45" "上海电信(天翼云)"
+    # trout "101.227.255.45" "上海电信(天翼云)"
 
-    trout "113.141.67.254" "陕西西安电信(天翼云)"
+    # trout "113.141.67.254" "陕西西安电信(天翼云)"
 
-    trout "182.150.2.3" "四川成都电信(天翼云)"
+    # trout "182.150.2.3" "四川成都电信(天翼云)"
 
-    trout "103.24.228.1" "天津联通"
+    # trout "103.24.228.1" "天津联通"
 
-    trout "113.207.32.97" "重庆联通"
+    # trout "113.207.32.97" "重庆联通"
 
-    trout "183.192.160.3" "上海移动"
+    # trout "183.192.160.3" "上海移动"
 
-    trout "202.205.6.30" "北京教育网"
+    # trout "202.205.6.30" "北京教育网"
 
-	save 'network.trout' "[$tstr]" 'y'
+	save 'AE'
 
-    pingin
-
-    pingout
+	save 'OE'
 }
 
 function system ()
@@ -285,14 +355,18 @@ function system ()
 
 	data="\"version\":\"$version\""
 
-	save "timestamp" $(prep $(int "$(date +%s)"))
-	save "uptime" $(prep $(int "$(cat /proc/uptime | awk '{ print $1 }')"))
-	save "ram" $( free -m | awk '/Mem/ {print $2}' )
-	save "swap" $( free -m | awk '/Swap/ {print $2}' )
-	save "disk" $(prep $(num "$(($(df -P -B 1 | grep '^/' | awk '{ print $2 }' | sed -e :a -e '$!N;s/\n/+/;ta')))"))
+	save 'P' "timestamp" $(prep $(int "$(date +%s)"))
 
-	os
+	save 'O' 'systeminfo'
+	save 'P' "uptime" $(prep $(int "$(cat /proc/uptime | awk '{ print $1 }')"))
+	save 'P' "ram" $( free -m | awk '/Mem/ {print $2}' ) 'L'
+	save 'P' "swap" $( free -m | awk '/Swap/ {print $2}' ) 'L'
+	save 'P' "disk" $(prep $(num "$(($(df -P -B 1 | grep '^/' | awk '{ print $2 }' | sed -e :a -e '$!N;s/\n/+/;ta')))")) 'L'
+	
 	cpu
+	os
+
+	save 'OE'
 }
 
 
@@ -312,7 +386,7 @@ function io ()
 	local ioall=$( awk 'BEGIN{print '$ioraw1' + '$ioraw1' + '$ioraw1'}' )
 	local ioavg=$( awk 'BEGIN{print '$ioall'/3}' )
 
-	save 'io' "{\"detail\":[$ioraw1,$ioraw1,$ioraw1],\"avg\":$ioavg,\"unit\":\"MB/s\"}"
+	save 'PS' 'io' "{\"detail\":[$ioraw1,$ioraw1,$ioraw1],\"avg\":$ioavg,\"unit\":\"MB/s\"}"
 }
 
 function os ()
@@ -352,11 +426,11 @@ function os ()
 			;;
 	esac
 
-	save "os_kernel" "$os_kernel"
+	save 'P' "os_kernel" "$os_kernel"
 
-	save "os_name"   "$os_name"
+	save 'P' "os_name"   "$os_name"
 
-	save "os_arch"	 "$os_arch"
+	save 'P' "os_arch"	 "$os_arch"
 }
 
 function cpu ()
@@ -378,38 +452,53 @@ function cpu ()
 		cpu_freq=$(prep $(num "$(lscpu | grep 'CPU MHz' | awk -F\: '{ print $2 }' | sed -e 's/^ *//g' -e 's/ *$//g')"))
 	fi
 
-	save "cpu_name"  "$cpu_name"
-	save "cpu_cores" "$cpu_cores"
-	save "cpu_freq"  "$cpu_freq"
+	save 'P' "cpu_name"  "$cpu_name"
+	save 'P' "cpu_cores" "$cpu_cores"
+	save 'P' "cpu_freq"  "$cpu_freq"
 }
 
 function network ()
 {
-	trace "========== 2. 网络测试 =========="
+	trace "========== 3. 网络测试 =========="
+
+	save 'O' 'network'
 
 	# IP addresses and network usage
-	ipv4=$(prep "$(ip addr show $nic | grep 'inet ' | awk '{ print $2 }' | awk -F\/ '{ print $1 }' | grep -v '^127' | awk '{ print $0 } END { if (!NR) print "N/A" }')")
+	#ipv4=$(prep "$(ip addr show $nic | grep 'inet ' | awk '{ print $2 }' | awk -F\/ '{ print $1 }' | grep -v '^127' | awk '{ print $0 } END { if (!NR) print "N/A" }')")
+	ipv4=$(curl -s myip.ipip.net | awk -F ' ' '{print $2}' | awk -F '：' '{print $2}')
 	ipv6=$(prep "$(ip addr show $nic | grep 'inet6 ' | awk '{ print $2 }' | awk -F\/ '{ print $1 }' | grep -v '^::' | grep -v '^0000:' | grep -v '^fe80:' | awk '{ print $0 } END { if (!NR) print "N/A" }')")
 
-	save "network.nic" $(prep "$(ip route get 8.8.8.8 | grep dev | awk -F'dev' '{ print $2 }' | awk '{ print $1 }')")
+	save 'P' "nic" $(prep "$(ip route get 8.8.8.8 | grep dev | awk -F'dev' '{ print $2 }' | awk '{ print $1 }')")
 
-	save "network.ipv4" "$ipv4"
-	save "network.ipv6" "$ipv6"
+	save 'P' 'ipv4' "$ipv4"
+	save 'P' 'location' "$(curl -s myip.ipip.net | awk -F '：' '{print $3}')"
 
-	trace "========== 2.1 网络带宽测试 =========="
+	save 'P' "ipv6" "$ipv6"
 
-	#save "network.bandwidth" "$(python speedtest.py --share --json)" 'y'
+	trace "========== 3.1 网络带宽测试 =========="
+	save 'PS' "bandwidth" "$(python $root_path/speedtest-cli.py --share --json)"
 
-	trace "========== 2.2 网络下载测试 =========="
-	#speed_v4
+	trace "========== 3.2 网络下载测试 =========="
+	#speed_dl
 
-	trace "========== 2.3 路由追踪和延迟测试 =========="
+	trace "========== 3.3 Ping延迟测试 =========="
+	#pingtest
+
+	trace "========== 3.4 路由测试 =========="
 	traceroute
+
+
+	save 'OE'
 }
 
 function update_debug ()
 {
 	data="{$data}"
+	trace "========== 测试完成 =========="
+	echo ''
+	echo ''
+	echo ''
+	echo ''
 	echo "$data"
 
 }
@@ -440,7 +529,7 @@ function main ()
 {
 	prepare
 	system
-	io
+	#io
 	network
 	update_debug
 }
